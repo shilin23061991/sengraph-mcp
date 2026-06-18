@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,9 +68,57 @@ func TestToggleDefaults(t *testing.T) {
 	}
 }
 
+func TestInvalidEnvFallsBackToDefaults(t *testing.T) {
+	t.Setenv("SENTGRAPH_PROJECT_ID", "")
+	t.Setenv("SENTGRAPH_CONTEXT_TOKEN_BUDGET", "not-a-number")
+	t.Setenv("SENTGRAPH_INJECT_EVERY_PROMPT", "maybe")
+
+	c := Load(t.TempDir())
+	if c.ContextTokenBudget != 2000 {
+		t.Fatalf("token budget = %d, want default 2000", c.ContextTokenBudget)
+	}
+	if !c.InjectEveryPrompt {
+		t.Fatalf("invalid bool should fall back to default true")
+	}
+}
+
 func TestProjectGraphID(t *testing.T) {
 	if got := (Config{ProjectID: "alpha"}).ProjectGraphID(); got != "proj:alpha" {
 		t.Fatalf("graph id = %q", got)
+	}
+}
+
+func TestValidate(t *testing.T) {
+	valid := Config{
+		ZepAPIKey:          "key",
+		UserID:             "user",
+		ProjectID:          "project",
+		ContextTokenBudget: 2000,
+	}
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr string
+	}{
+		{name: "valid", cfg: valid},
+		{name: "missing api key", cfg: Config{UserID: "user", ProjectID: "project", ContextTokenBudget: 2000}, wantErr: "ZEP_API_KEY is required"},
+		{name: "missing user", cfg: Config{ZepAPIKey: "key", ProjectID: "project", ContextTokenBudget: 2000}, wantErr: "ZEP_USER_ID is required"},
+		{name: "missing project", cfg: Config{ZepAPIKey: "key", UserID: "user", ContextTokenBudget: 2000}, wantErr: "project id could not be resolved"},
+		{name: "invalid budget", cfg: Config{ZepAPIKey: "key", UserID: "user", ProjectID: "project"}, wantErr: "SENTGRAPH_CONTEXT_TOKEN_BUDGET must be greater than zero"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 

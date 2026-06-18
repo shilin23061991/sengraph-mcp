@@ -35,3 +35,17 @@ func TestLastByRoleEmpty(t *testing.T) {
 		t.Fatalf("want empty, got %q", got)
 	}
 }
+
+func TestParseMultipleTextBlocks(t *testing.T) {
+	jsonl := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"first"},{"type":"text","text":"second"}]}}`
+	entries, err := Parse(strings.NewReader(jsonl))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if got := entries[0].Text; got != "first\nsecond" {
+		t.Fatalf("text = %q", got)
+	}
+}

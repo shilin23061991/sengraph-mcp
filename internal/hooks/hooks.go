@@ -3,13 +3,19 @@ package hooks
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/shilin23061991/sengraph-mcp/internal/memory"
 	"github.com/shilin23061991/sengraph-mcp/internal/transcript"
 )
+
+// defaultThreadID is used when a hook payload has no session id. This keeps
+// early startup hooks useful while still making the fallback explicit.
+const defaultThreadID = "sentgraph-default"
 
 type Service interface {
 	EnsureIdentity(ctx context.Context, threadID string) error
@@ -47,7 +53,7 @@ func (h *Handler) Handle(ctx context.Context, event string, r io.Reader, w io.Wr
 	if err := json.NewDecoder(r).Decode(&p); err != nil && err != io.EOF {
 		return err
 	}
-	threadID := firstNonEmpty(p.SessionID, "sentgraph-default")
+	threadID := firstNonEmpty(p.SessionID, defaultThreadID)
 	if err := h.service.EnsureIdentity(ctx, threadID); err != nil {
 		return err
 	}
@@ -70,7 +76,7 @@ func (h *Handler) Handle(ctx context.Context, event string, r io.Reader, w io.Wr
 		}
 		return writeContext(w, event, contextBlock)
 	case "Stop", "SessionEnd":
-		return h.persistLatestAssistant(ctx, p.TranscriptPath, threadID)
+		return h.persistLatestAssistant(ctx, p.TranscriptPath, p.CWD, threadID)
 	default:
 		return nil
 	}
@@ -81,21 +87,20 @@ func (h *Handler) injectContext(ctx context.Context, w io.Writer, event, threadI
 	if err != nil {
 		return err
 	}
-	if contextBlock == "" {
-		return nil
-	}
 	return writeContext(w, event, contextBlock)
 }
 
-func (h *Handler) persistLatestAssistant(ctx context.Context, transcriptPath, threadID string) error {
+func (h *Handler) persistLatestAssistant(ctx context.Context, transcriptPath, cwd, threadID string) error {
 	if transcriptPath == "" {
 		return nil
 	}
-	f, err := os.Open(transcriptPath)
+	f, err := openTranscript(transcriptPath, cwd)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	entries, err := transcript.Parse(f)
 	if err != nil {
@@ -107,6 +112,65 @@ func (h *Handler) persistLatestAssistant(ctx context.Context, transcriptPath, th
 	}
 	_, err = h.service.AddTurn(ctx, threadID, []memory.Message{{Role: "assistant", Content: text}}, false)
 	return err
+}
+
+func openTranscript(transcriptPath, cwd string) (*os.File, error) {
+	if !filepath.IsAbs(transcriptPath) {
+		if cwd == "" {
+			wd, err := os.Getwd()
+			if err != nil {
+				return nil, err
+			}
+			cwd = wd
+		}
+		transcriptPath = filepath.Join(cwd, transcriptPath)
+	}
+	path, err := filepath.Abs(transcriptPath)
+	if err != nil {
+		return nil, err
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, err
+	}
+	allowedRoots, err := allowedTranscriptRoots(cwd)
+	if err != nil {
+		return nil, err
+	}
+	for _, root := range allowedRoots {
+		rel, err := filepath.Rel(root, path)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && !filepath.IsAbs(rel) {
+			return os.Open(path)
+		}
+	}
+	return nil, fmt.Errorf("transcript path %q is outside allowed roots", transcriptPath)
+}
+
+func allowedTranscriptRoots(cwd string) ([]string, error) {
+	roots := make([]string, 0, 2)
+	if cwd == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		cwd = wd
+	}
+	absCWD, err := filepath.Abs(cwd)
+	if err != nil {
+		return nil, err
+	}
+	roots = append(roots, evalRoot(absCWD))
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		roots = append(roots, evalRoot(filepath.Join(home, ".claude", "projects")))
+	}
+	return roots, nil
+}
+
+func evalRoot(root string) string {
+	if evaluated, err := filepath.EvalSymlinks(root); err == nil {
+		return evaluated
+	}
+	return root
 }
 
 func writeContext(w io.Writer, event, contextBlock string) error {

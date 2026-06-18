@@ -12,11 +12,17 @@ type Server struct {
 	inner *mcp.Server
 }
 
+var (
+	closedWorld    = false
+	nonDestructive = false
+	destructive    = true
+)
+
 func New(svc *memory.Service, version string) *Server {
+	if svc == nil {
+		panic("mcpserver: service cannot be nil")
+	}
 	s := mcp.NewServer(&mcp.Implementation{Name: "sentgraph", Version: version}, nil)
-	closedWorld := false
-	nonDestructive := false
-	destructive := true
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "memory_context",

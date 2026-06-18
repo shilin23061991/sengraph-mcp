@@ -72,6 +72,12 @@ func TestAddDataChunksAndTargetsProject(t *testing.T) {
 	if len([]rune(gw.data[0].Data)) != MaxGraphDataChars || len([]rune(gw.data[1].Data)) != 1 {
 		t.Fatalf("bad chunk lengths: %d/%d", len([]rune(gw.data[0].Data)), len([]rune(gw.data[1].Data)))
 	}
+	if gw.data[0].Metadata["sentgraph_chunk_index"] != 0 || gw.data[1].Metadata["sentgraph_chunk_index"] != 1 {
+		t.Fatalf("chunk indexes missing: %+v / %+v", gw.data[0].Metadata, gw.data[1].Metadata)
+	}
+	if gw.data[0].Metadata["sentgraph_chunk_count"] != 2 || gw.data[1].Metadata["sentgraph_chunk_count"] != 2 {
+		t.Fatalf("chunk counts missing: %+v / %+v", gw.data[0].Metadata, gw.data[1].Metadata)
+	}
 }
 
 func TestSearchDefaultsAndCapsLimit(t *testing.T) {
@@ -111,7 +117,7 @@ func TestForgetValidatesKind(t *testing.T) {
 }
 
 func testConfig() config.Config {
-	return config.Config{ZepAPIKey: "key", UserID: "dev-1", ProjectID: "alpha"}
+	return config.Config{ZepAPIKey: "key", UserID: "dev-1", ProjectID: "alpha", ContextTokenBudget: 2000}
 }
 
 type fakeGateway struct {

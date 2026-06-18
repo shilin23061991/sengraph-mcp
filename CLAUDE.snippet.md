@@ -1,4 +1,4 @@
-## Memory (sentgraph MCP)
+# Memory (sentgraph MCP)
 
 You have long-term memory through the `sentgraph` MCP server, backed by Zep Cloud.
 
