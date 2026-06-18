@@ -25,6 +25,8 @@ type Config struct {
 	ProjectID string
 
 	// Hook frequency / behavior toggles ("read more, write more").
+	// TODO: Wire these into hooks and context assembly once runtime tuning is
+	// exposed; defaults currently match the intended first release behavior.
 	InjectEveryPrompt  bool
 	ProjectAutocapture bool
 	CaptureTools       bool

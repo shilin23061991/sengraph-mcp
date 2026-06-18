@@ -184,6 +184,11 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchResult
 	return s.gw.SearchGraph(ctx, req, s.cfg.UserID, s.cfg.ProjectGraphID())
 }
 
+// AddData persists a fact, decision, or document-like payload to user or
+// project graph memory. Data above MaxGraphDataChars is split into separate
+// Zep graph episodes with chunk metadata. Zep does not expose a transaction for
+// these writes, so if chunk N fails, earlier chunks have already been written;
+// callers should retry the operation or delete partial chunks if that matters.
 func (s *Service) AddData(ctx context.Context, req AddDataRequest) error {
 	req.Data = strings.TrimSpace(redact.Secrets(req.Data))
 	if req.Data == "" {

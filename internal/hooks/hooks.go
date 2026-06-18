@@ -115,7 +115,21 @@ func (h *Handler) persistLatestAssistant(ctx context.Context, transcriptPath, cw
 }
 
 func openTranscript(transcriptPath, cwd string) (*os.File, error) {
+	if !filepath.IsAbs(transcriptPath) {
+		if cwd == "" {
+			wd, err := os.Getwd()
+			if err != nil {
+				return nil, err
+			}
+			cwd = wd
+		}
+		transcriptPath = filepath.Join(cwd, transcriptPath)
+	}
 	path, err := filepath.Abs(transcriptPath)
+	if err != nil {
+		return nil, err
+	}
+	path, err = filepath.EvalSymlinks(path)
 	if err != nil {
 		return nil, err
 	}
@@ -145,11 +159,18 @@ func allowedTranscriptRoots(cwd string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	roots = append(roots, absCWD)
+	roots = append(roots, evalRoot(absCWD))
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		roots = append(roots, filepath.Join(home, ".claude", "projects"))
+		roots = append(roots, evalRoot(filepath.Join(home, ".claude", "projects")))
 	}
 	return roots, nil
+}
+
+func evalRoot(root string) string {
+	if evaluated, err := filepath.EvalSymlinks(root); err == nil {
+		return evaluated
+	}
+	return root
 }
 
 func writeContext(w io.Writer, event, contextBlock string) error {
