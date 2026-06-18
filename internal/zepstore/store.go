@@ -3,6 +3,8 @@ package zepstore
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	zep "github.com/getzep/zep-go/v3"
@@ -23,6 +25,8 @@ func New(apiKey string) *Store {
 func (s *Store) EnsureUser(ctx context.Context, userID string) error {
 	if _, err := s.client.User.Get(ctx, userID); err == nil {
 		return nil
+	} else if !isNotFound(err) {
+		return fmt.Errorf("check Zep user %q: %w", userID, err)
 	}
 	_, err := s.client.User.Add(ctx, &zep.CreateUserRequest{UserID: userID})
 	return err
@@ -31,6 +35,8 @@ func (s *Store) EnsureUser(ctx context.Context, userID string) error {
 func (s *Store) EnsureProjectGraph(ctx context.Context, graphID string) error {
 	if _, err := s.client.Graph.Get(ctx, graphID); err == nil {
 		return nil
+	} else if !isNotFound(err) {
+		return fmt.Errorf("check Zep graph %q: %w", graphID, err)
 	}
 	name := graphID
 	_, err := s.client.Graph.Create(ctx, &zep.CreateGraphRequest{
@@ -43,6 +49,8 @@ func (s *Store) EnsureProjectGraph(ctx context.Context, graphID string) error {
 func (s *Store) EnsureThread(ctx context.Context, threadID, userID string) error {
 	if _, err := s.client.Thread.Get(ctx, threadID, &zep.ThreadGetRequest{Lastn: intPtr(1)}); err == nil {
 		return nil
+	} else if !isNotFound(err) {
+		return fmt.Errorf("check Zep thread %q: %w", threadID, err)
 	}
 	_, err := s.client.Thread.Create(ctx, &zep.CreateThreadRequest{
 		ThreadID: threadID,
@@ -164,8 +172,13 @@ func (s *Store) DeleteGraphItem(ctx context.Context, kind, uuid string) error {
 		_, err := s.client.Graph.Episode.Delete(ctx, uuid)
 		return err
 	default:
-		return nil
+		return fmt.Errorf("unknown graph item kind: %q", kind)
 	}
+}
+
+func isNotFound(err error) bool {
+	var notFound *zep.NotFoundError
+	return errors.As(err, &notFound)
 }
 
 func stringPtrOrNil(s string) *string {

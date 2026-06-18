@@ -59,6 +59,8 @@ func (c Config) Validate() error {
 		return errors.New("ZEP_USER_ID is required (or set $USER)")
 	case c.ProjectID == "":
 		return errors.New("project id could not be resolved (set SENTGRAPH_PROJECT_ID or add .sentgraph.toml)")
+	case c.ContextTokenBudget <= 0:
+		return errors.New("SENTGRAPH_CONTEXT_TOKEN_BUDGET must be greater than zero")
 	default:
 		return nil
 	}
@@ -81,6 +83,8 @@ func resolveProjectID(startDir string) string {
 }
 
 func findUp(start, name string) (string, bool) {
+	// All Stat errors are treated as "not found" so a permission issue in one
+	// directory does not prevent checking its parents.
 	dir := start
 	if dir == "" {
 		wd, err := os.Getwd()
@@ -109,7 +113,9 @@ func readTOMLString(path, key string) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {

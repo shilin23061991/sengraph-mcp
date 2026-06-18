@@ -196,11 +196,20 @@ func (s *Service) AddData(ctx context.Context, req AddDataRequest) error {
 		req.Target = TargetProject
 	}
 
-	for _, chunk := range chunks(req.Data, MaxGraphDataChars) {
+	allChunks := chunks(req.Data, MaxGraphDataChars)
+	for i, chunk := range allChunks {
 		next := req
 		next.Data = chunk
+		if len(allChunks) > 1 {
+			next.Metadata = cloneMetadata(req.Metadata)
+			next.Metadata["sentgraph_chunk_index"] = i
+			next.Metadata["sentgraph_chunk_count"] = len(allChunks)
+		}
 		if err := s.gw.AddGraphData(ctx, next, s.cfg.UserID, s.cfg.ProjectGraphID()); err != nil {
-			return err
+			if i > 0 {
+				return fmt.Errorf("add graph data chunk %d/%d: %w (previous chunks were already written)", i+1, len(allChunks), err)
+			}
+			return fmt.Errorf("add graph data chunk %d/%d: %w", i+1, len(allChunks), err)
 		}
 	}
 	return nil
@@ -248,6 +257,14 @@ func chunks(s string, size int) []string {
 		n := min(len(r), size)
 		out = append(out, string(r[:n]))
 		r = r[n:]
+	}
+	return out
+}
+
+func cloneMetadata(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in)+2)
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

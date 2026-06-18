@@ -42,6 +42,33 @@ func TestSecretsRedactsBearer(t *testing.T) {
 	}
 }
 
+func TestSecretsRedactsMultiple(t *testing.T) {
+	openAI := "sk" + "-" + strings.Repeat("aA1bB2cC", 3)
+	aws := "AK" + "IA" + strings.Repeat("Q", 16)
+	in := "first " + openAI + " second " + aws
+	got := Secrets(in)
+	for _, secret := range []string{openAI, aws} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("secret %q not redacted: %q", secret, got)
+		}
+	}
+}
+
+func TestSecretsRedactsAtBoundaries(t *testing.T) {
+	secret := "gh" + "p_" + strings.Repeat("a", 36)
+	cases := []string{
+		secret + " at start",
+		"at end " + secret,
+		secret,
+		secret + "sk" + "-" + strings.Repeat("z9", 12),
+	}
+	for _, in := range cases {
+		if got := Secrets(in); strings.Contains(got, secret) {
+			t.Fatalf("boundary secret not redacted: %q", got)
+		}
+	}
+}
+
 func TestSecretsKeepsNormalText(t *testing.T) {
 	in := "The user prefers tabs over spaces and targets Go 1.25."
 	if got := Secrets(in); got != in {

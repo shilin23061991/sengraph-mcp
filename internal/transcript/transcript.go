@@ -52,13 +52,18 @@ func Parse(r io.Reader) ([]Entry, error) {
 			continue
 		}
 
-		role := rec.Role
+		// Priority: Message.Role > rec.Role > rec.Type.
+		var role string
 		var content json.RawMessage
 		if rec.Message != nil {
 			if rec.Message.Role != "" {
 				role = rec.Message.Role
+			} else {
+				role = rec.Role
 			}
 			content = rec.Message.Content
+		} else {
+			role = rec.Role
 		}
 		if role == "" {
 			role = rec.Type

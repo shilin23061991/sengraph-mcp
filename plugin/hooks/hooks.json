@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "sentgraph hook SessionStart",
-            "timeout": 10
+            "timeout": 20
           }
         ]
       }
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "sentgraph hook UserPromptSubmit",
-            "timeout": 10
+            "timeout": 20
           }
         ]
       }
@@ -29,7 +29,7 @@
           {
             "type": "command",
             "command": "sentgraph hook PreCompact",
-            "timeout": 10
+            "timeout": 20
           }
         ]
       }
@@ -40,7 +40,7 @@
           {
             "type": "command",
             "command": "sentgraph hook Stop",
-            "timeout": 10
+            "timeout": 20
           }
         ]
       }
@@ -51,7 +51,7 @@
           {
             "type": "command",
             "command": "sentgraph hook SessionEnd",
-            "timeout": 10
+            "timeout": 20
           }
         ]
       }
