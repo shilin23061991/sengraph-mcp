@@ -1,169 +1,135 @@
-# Архитектура памяти через Zep Cloud
+# Zep Cloud memory architecture
 
-## Что такое Zep Cloud (проверено по доке)
+Sentgraph is a thin Go MCP server and hook layer over Zep Cloud. Zep owns the heavy work: temporal graph construction, entity extraction, deduplication, embeddings, retrieval, and context block assembly.
 
-- Ты кидаешь сырые сообщения → Zep сам строит граф, извлекает сущности, дедуплицирует
-- Никакого чанкинга, векторизации и обработки на твоей стороне нет
-- Ingestion занимает несколько минут (асинхронно)
-- Официального MCP-сервера для Zep Cloud нет. Есть только community-реализация: [kev-hu/zep-mcp](https://github.com/kev-hu/zep-mcp)
+## What we do not build locally
 
----
+- No DAG or vertex discovery on our side.
+- No local vector database.
+- No local graph builder.
+- No semantic-search implementation.
+- No entity deduplication.
 
-## Две операции
+The only local processing before cloud writes is secret redaction and Zep limit enforcement.
 
-### Запись (write)
-```python
-zep_client.thread.add_messages(thread_id, messages=[
-    Message(role="user", content="..."),
-    Message(role="assistant", content="...")
-])
-```
-- Принимает сырые сообщения, max 30 за вызов, max 4096 символов на сообщение
-- Zep сам строит/обновляет граф на своей стороне
+## Scope model
 
-### Чтение (read)
-```python
-user_context = client.thread.get_user_context(thread_id=thread_id)
-context_block = user_context.context  # строка для вставки в system prompt
-```
-- Возвращает: summary пользователя + релевантные факты с датами
-- Latency P95 < 200ms
-- Контекст собирается по последним 2 сообщениям треда автоматически
+- `ZEP_USER_ID` maps to the developer. This user graph stores personal preferences and cross-project facts.
+- `project_id` maps to one standalone project graph. A project can span many repositories.
+- `.sentgraph.toml` can pin multiple repos to the same project:
 
----
-
-## Где хук, где нет
-
-### ✅ Запись — вешаем на Stop-хук
-
-Хук запускается автоматически при завершении каждого диалога.
-Агент не тратит ни одного токена, ни одного tool call — всё тихо.
-
-```bash
-# .claude/hooks/stop.sh
-#!/bin/bash
-# читаем transcript из stdin, парсим, пушим в Zep
-python3 push_to_zep.py
+```toml
+project_id = "sentoke"
 ```
 
-Агент ничего не решает — запись происходит всегда.
+- `thread_id` maps to the agent session id.
 
----
+## Core Zep operations
 
-### ❌ Чтение — хук не справляется
+### Add conversation turns
 
-Хуки запускаются ПОСЛЕ того, как Claude уже начал работу.
-Нет хука "до первого сообщения — дай мне системный промпт".
-Инжектировать Zep-контекст в контекстное окно через хук нельзя.
+Go SDK:
 
----
-
-## Варианты для чтения
-
-### Вариант A — CLAUDE.md + Bash (без MCP-сервера)
-
-В `CLAUDE.md` пишем инструкцию:
-```
-В начале каждого разговора вызови:
-python3 get_zep_context.py --user {user_id}
-И включи результат в system prompt.
+```go
+client.Thread.AddMessages(ctx, threadID, &zep.AddThreadMessagesRequest{
+    Messages: []*zep.Message{{Role: "user", Content: "..."}},
+    ReturnContext: zep.Bool(true),
+})
 ```
 
-- Плюс: не нужен MCP-сервер
-- Минус: зависит от дисциплины агента следовать инструкции
-- Минус: нет гарантии что агент сделает это первым действием
+Limits:
 
----
+- max 30 messages per call
+- max 4096 characters per message
 
-### Вариант B — Тонкий MCP-сервер (~30 строк)
+`ReturnContext` is important: it lets hooks write the prompt and get fresh context in one call.
 
-Два инструмента:
-- `read_memory(user_id)` → возвращает context block из Zep
-- `write_memory(user_id, messages)` → пишет в Zep (опционально, если не хочешь Stop-хук)
+### Get user context
 
-```python
-@mcp.tool()
-def read_memory(user_id: str) -> str:
-    context = zep.thread.get_user_context(thread_id=user_id)
-    return context.context
+Go SDK:
 
-@mcp.tool()
-def write_memory(user_id: str, content: str) -> str:
-    zep.graph.add(user_id=user_id, data=content, type="text")
-    return "ok"
+```go
+client.Thread.GetUserContext(ctx, threadID, nil)
 ```
 
-- Плюс: Claude явно контролирует когда читать и писать
-- Плюс: надёжно, предсказуемо
-- Минус: нужно поднять сервер
+The old `mode` parameter (`summary`/`basic`) is gone. Zep now returns the structured context block by default.
 
----
+### Add graph data
 
-### Вариант C — Гибрид (рекомендуемый)
+Go SDK:
 
-| Операция | Механизм | Агент решает? |
-|----------|----------|---------------|
-| Запись всего диалога | Stop-хук | Нет (автоматически) |
-| Чтение контекста в начале | MCP tool `read_memory` | Да (явный tool call) |
-| Запись важного факта по ходу | MCP tool `write_memory` | Да (по решению агента) |
-
-Хук берёт на себя рутину (запись всего диалога).
-MCP даёт агенту явный контроль над чтением и записью важных вещей в моменте.
-
----
-
-## Что остаётся по решению агента
-
-Агент сам решает:
-- Когда читать память (обычно — в начале разговора)
-- Когда записать важный факт по ходу диалога (не ждать конца)
-- Как использовать context block (вставить в промпт, проигнорировать, уточнить)
-
----
-
-## Что НЕ нужно делать на своей стороне
-
-- Чанкинг текста
-- Векторизация
-- Построение/обновление графа
-- Дедупликация сущностей
-- Семантический поиск
-
-Всё это Zep делает сам на своей стороне.
-
----
-
-## Итоговая схема
-
-```
-Пользователь пишет сообщение
-        │
-        ▼
-[Claude получает запрос]
-        │
-        ▼ (MCP tool call по инструкции в CLAUDE.md)
-[read_memory(user_id)] ──► Zep Cloud ──► context block
-        │
-        ▼
-[Claude работает с памятью в промпте]
-        │
-        ├── по ходу: write_memory(важный факт) ──► Zep Cloud
-        │
-        ▼
-[Диалог завершён]
-        │
-        ▼ (Stop-хук, автоматически)
-[push_to_zep.py: все сообщения треда] ──► Zep Cloud
+```go
+client.Graph.Add(ctx, &zep.AddDataRequest{
+    GraphID: &projectGraphID,
+    Type: zep.GraphDataTypeText,
+    Data: "...",
+})
 ```
 
----
+Use this for project facts, decisions, JSON, and larger non-chat data. Local code chunks payloads above 10000 characters.
 
-## Статус MCP-серверов для Zep Cloud
+### Search graph
 
-| Сервер | Тип | Звёзды | Рекомендация |
-|--------|-----|--------|--------------|
-| [kev-hu/zep-mcp](https://github.com/kev-hu/zep-mcp) | Community | 11 | Рабочий, но не официальный |
-| getzep/graphiti mcp_server | Официальный | — | Только для self-hosted Graphiti, не для Zep Cloud |
-| docs-mcp.getzep.com | Официальный | — | Только поиск по документации, не по данным |
+Go SDK:
 
-Официального MCP для Zep Cloud от самого Zep на июнь 2026 нет.
+```go
+client.Graph.Search(ctx, &zep.GraphSearchQuery{
+    GraphID: &projectGraphID,
+    Query: "auth decision",
+    Scope: zep.GraphSearchScopeEdges.Ptr(),
+    Limit: zep.Int(10),
+})
+```
+
+Use direct search for focused recall and deletion workflows.
+
+## MCP tools
+
+Sentgraph exposes only six core tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `memory_context` | Get assembled user + project context |
+| `memory_search` | Search user/project graph memory |
+| `memory_history` | Inspect recent thread messages |
+| `memory_add_messages` | Persist conversation turns |
+| `memory_add` | Persist durable facts/data |
+| `memory_forget` | Delete edge/node/episode by UUID |
+
+Admin CRUD is internal and idempotent: ensure user, ensure project graph, ensure thread.
+
+## Hook cadence
+
+Unlike the old proposal, reading through hooks is supported: Claude hooks can inject context through `hookSpecificOutput.additionalContext`.
+
+Default cadence:
+
+- `SessionStart`: ensure identity, read context, inject it.
+- `UserPromptSubmit`: write user prompt, retrieve fresh context, inject it.
+- `PreCompact`: read context and inject it before compaction.
+- `Stop`: persist the latest assistant turn from transcript.
+- `SessionEnd`: final persist pass.
+
+Optional:
+
+- `PostToolUse`: persist selected tool outputs. Default off to avoid noisy memory.
+
+## Skills
+
+Action skills:
+
+- `recall`
+- `remember`
+- `forget`
+- `session-history`
+
+Reference skill:
+
+- `sentgraph-tools` documents all six MCP tools and when to use them.
+
+## Best-practice constraints
+
+- Redact secrets before writing to Zep.
+- Prefer `memory_add` only for durable facts, decisions, preferences, and project invariants.
+- Do not duplicate routine transcript writes; hooks already capture turns.
+- Keep project facts in the project graph and personal preferences in the user graph.
