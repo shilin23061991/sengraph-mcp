@@ -1,6 +1,6 @@
-# Sentgraph MCP -- план реализации (Go + Zep Cloud)
+# Sentgraph MCP -- план реализации
 
-Memory-MCP-сервер на Go поверх Zep Cloud: тонкий слой из 6 основных инструментов + нативные хуки жизненного цикла (читаем/пишем часто) + скиллы. По мотивам AgentMemory (rohitg00/agentmemory, 23k+ звёзд), но эффективнее: тяжёлую работу (граф, эмбеддинги, поиск, дедуп) делает Zep, у нас нет локального движка и демона.
+Memory-MCP-сервер на Go поверх Zep Cloud: один бинарник, 6 основных MCP-инструментов, нативные хуки жизненного цикла и скиллы. Тяжёлую работу (граф, эмбеддинги, поиск, дедупликацию) делает Zep; локально остаются только конфиг, безопасная редакция секретов, маршрутизация хуков и тонкий MCP/API слой.
 
 ---
 
@@ -10,12 +10,12 @@ Memory-MCP-сервер на Go поверх Zep Cloud: тонкий слой и
 - Zep SDK: **`github.com/getzep/zep-go/v3`** (v3.23.0).
 - MCP SDK: **`github.com/modelcontextprotocol/go-sdk`** (v1.6.1, GA; stdio + Streamable HTTP, типизированные инструменты, аннотации).
 - Скоупинг: один Zep `user` = разработчик (личный граф, кросс-проектное) **+ один standalone graph на ПРОЕКТ** (проект может включать ~10 репозиториев).
-- Хуки зовут Zep **напрямую**, без демона. Общий internal-пакет с MCP-сервером. Старт ~мс (улучшение над Node-хуками AgentMemory).
+- Хуки зовут Zep **напрямую**, без демона. Общий internal-пакет с MCP-сервером. Старт ~мс.
 - Частоты: **читать больше, писать больше** (см. раздел 6).
 
 ---
 
-## 1. Критический пересмотр `zep-memory.md`
+## 1. Что меняем относительно `zep-memory.md`
 
 Верно (оставляем):
 - На нашей стороне НЕ нужны DAG, поиск вершин, чанкинг, векторизация, дедупликация, построение графа. Zep строит темпоральный граф знаний сам, отдаёт context block <200ms.
@@ -26,7 +26,7 @@ Memory-MCP-сервер на Go поверх Zep Cloud: тонкий слой и
 - "Чтение -- хук не справляется" -- НЕВЕРНО. Хуки Claude Code инжектят контекст через `hookSpecificOutput.additionalContext` (`SessionStart`, `UserPromptSubmit`, `PreCompact`). Значит читаем автоматически и часто. Весь "Вариант A vs B vs C" больше не нужен.
 - Параметр `mode` (`summary`/`basic`) у `get_user_context` удалён (February 2026 deprecation wave). Теперь структурированный формат по умолчанию.
 - Не учтён `return_context=true` у `add_messages` -- запись + получение свежего контекста одним вызовом (ключ для "читать/писать больше").
-- Community `kev-hu/zep-mcp` и Python-набросок не релевантны: пишем свой на Go.
+- Python-набросок не используем: реализация на Go.
 
 ---
 
@@ -194,7 +194,7 @@ sentgraph-mcp/
 
 ---
 
-## 11. Шаги реализации (TDD по поведению, инкрементально)
+## 11. Шаги реализации
 
 1. Скелет: `go.mod` (go 1.25) + зависимости; `cmd/sentgraph` с режимами `serve`/`hook`/`doctor`.
 2. `internal/config`: резолв ключа, user_id, project_id (`.sentgraph.toml` + env + fallback), тумблеры.
@@ -206,12 +206,3 @@ sentgraph-mcp/
 8. `plugin`: `plugin.json` + 4 action-скилла + reference-скилл `sentgraph-tools`.
 9. `CLAUDE.snippet.md`, `.env.example`, README; переписать `zep-memory.md` под исправленный Go-дизайн.
 10. Тесты (redact/config/transcript/service с endpoint-shaped мок-Zep) + `go build ./...`, `go vet ./...`, `go test ./...`.
-
----
-
-## 12. Источники (проверено июнь 2026)
-
-- Zep Go SDK: pkg.go.dev/github.com/getzep/zep-go/v3 (v3.23.0); help.getzep.com (adding-messages, get-user-context, graph/search, graph/add-data, february-2026-deprecation-wave).
-- MCP Go SDK: github.com/modelcontextprotocol/go-sdk (v1.6.1, GA с v1.0.0 2025-09-30).
-- AgentMemory: github.com/rohitg00/agentmemory (12 хуков, 15 скиллов, пайплайн dedup/redaction).
-- Claude Code hooks: события + `hooks.json` + `additionalContext` (anthropics/claude-code, 2026 reference).
