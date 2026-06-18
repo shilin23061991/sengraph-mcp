@@ -1,4 +1,4 @@
-# sengraph-mcp
+# sentgraph-mcp
 
 Go MCP server for long-term coding-agent memory backed by Zep Cloud.
 
@@ -40,10 +40,11 @@ Required:
 
 ```bash
 export ZEP_API_KEY="..."
-export ZEP_USER_ID="mrshikadancer"
 ```
 
-Project scope can be shared across many repos by adding `.sentgraph.toml`:
+`ZEP_USER_ID` identifies the developer in Zep. If unset, it falls back to `$USER`.
+
+Project scope can be shared across many repos by adding `.sentgraph.toml` anywhere above the working directory (searched upward, not only at the repo root):
 
 ```toml
 project_id = "sentoke"
@@ -62,10 +63,10 @@ export SENTGRAPH_CONTEXT_TOKEN_BUDGET=2000
 ## Commands
 
 ```bash
-sentgraph doctor
-sentgraph doctor --online
-sentgraph serve
-sentgraph serve --http :8080
+sentgraph doctor                 # validate config (API key, user, project id)
+sentgraph doctor --online        # also check Zep connectivity (ensure user/project graph/thread)
+sentgraph serve                  # MCP over stdio (default for Claude Code / Cursor)
+sentgraph serve --http :8080     # MCP over Streamable HTTP on ADDR
 sentgraph hook SessionStart
 ```
 
