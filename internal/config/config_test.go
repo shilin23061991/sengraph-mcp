@@ -153,6 +153,33 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestEnvFilePresentReported(t *testing.T) {
+	t.Run("found", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, ".env.local"), "SENTGRAPH_PROJECT_ID=p\n")
+		t.Setenv("CLAUDE_PROJECT_DIR", dir)
+		unset(t, "SENTGRAPH_PROJECT_ID")
+		if !Load().EnvFilePresent {
+			t.Fatal("EnvFilePresent should be true when .env.local exists")
+		}
+	})
+	t.Run("missing", func(t *testing.T) {
+		isolate(t)
+		if Load().EnvFilePresent {
+			t.Fatal("EnvFilePresent should be false without .env.local")
+		}
+	})
+}
+
+func TestRequireEnvFile(t *testing.T) {
+	if err := (Config{EnvFilePresent: true}).RequireEnvFile(); err != nil {
+		t.Fatalf("present should pass: %v", err)
+	}
+	if err := (Config{EnvFilePresent: false}).RequireEnvFile(); err == nil {
+		t.Fatal("absent .env.local should error")
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

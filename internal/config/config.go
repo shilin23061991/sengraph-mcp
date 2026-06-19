@@ -25,6 +25,11 @@ type Config struct {
 	UserID    string
 	ProjectID string
 
+	// EnvFilePresent reports whether a .env.local was found for this project.
+	// serve and doctor require it (RequireEnvFile) so a global (user-scope)
+	// install does not silently run in projects that are not set up.
+	EnvFilePresent bool
+
 	// Hook frequency / behavior toggles ("read more, write more").
 	// TODO: Wire these into hooks and context assembly once runtime tuning is
 	// exposed; defaults currently match the intended first release behavior.
@@ -40,7 +45,7 @@ type Config struct {
 // shared global environment. The three identity values are still required;
 // Validate rejects any that are empty.
 func Load() Config {
-	loadEnvFile()
+	found := loadEnvFile()
 	return Config{
 		ZepAPIKey:          os.Getenv("ZEP_API_KEY"),
 		UserID:             os.Getenv("ZEP_USER_ID"),
@@ -49,6 +54,7 @@ func Load() Config {
 		ProjectAutocapture: boolEnv("SENTGRAPH_PROJECT_AUTOCAPTURE", true),
 		CaptureTools:       boolEnv("SENTGRAPH_CAPTURE_TOOLS", false),
 		ContextTokenBudget: intEnv("SENTGRAPH_CONTEXT_TOKEN_BUDGET", 2000),
+		EnvFilePresent:     found,
 	}
 }
 
@@ -74,23 +80,35 @@ func (c Config) Validate() error {
 	}
 }
 
+// RequireEnvFile guards against global (user-scope) or accidental installs:
+// without a .env.local in the project, serve and doctor refuse to run.
+func (c Config) RequireEnvFile() error {
+	if !c.EnvFilePresent {
+		return errors.New(".env.local not found in project: sentgraph-mcp is project-scoped -- create .env.local in the project and install the plugin with --scope project")
+	}
+	return nil
+}
+
 // loadEnvFile seeds the process environment from the nearest .env.local so each
 // project can carry its own keys. It searches upward from CLAUDE_PROJECT_DIR
 // (set by Claude Code for project-scoped servers) or the working directory and
 // loads the file with godotenv (non-override): existing environment variables
 // win, the file only fills in the ones that are unset. Missing files are ignored.
-func loadEnvFile() {
+func loadEnvFile() bool {
 	base := os.Getenv("CLAUDE_PROJECT_DIR")
 	if base == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			return
+			return false
 		}
 		base = wd
 	}
-	if path, ok := findUp(base, envFileName); ok {
-		_ = godotenv.Load(path)
+	path, ok := findUp(base, envFileName)
+	if !ok {
+		return false
 	}
+	_ = godotenv.Load(path)
+	return true
 }
 
 // findUp returns the path to name in the nearest ancestor directory of start.

@@ -23,6 +23,9 @@ func runServe(ctx context.Context, args []string) error {
 	}
 
 	cfg := config.Load()
+	if err := cfg.RequireEnvFile(); err != nil {
+		return err
+	}
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
