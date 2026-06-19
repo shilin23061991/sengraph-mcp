@@ -10,6 +10,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -30,6 +31,11 @@ type Config struct {
 	// install does not silently run in projects that are not set up.
 	EnvFilePresent bool
 
+	// envFileErr is non-nil when a .env.local was found but could not be loaded
+	// (syntax/permission error). RequireEnvFile surfaces it so the user sees the
+	// real cause instead of a misleading "key is required".
+	envFileErr error
+
 	// Hook frequency / behavior toggles ("read more, write more").
 	// TODO: Wire these into hooks and context assembly once runtime tuning is
 	// exposed; defaults currently match the intended first release behavior.
@@ -45,7 +51,7 @@ type Config struct {
 // shared global environment. The three identity values are still required;
 // Validate rejects any that are empty.
 func Load() Config {
-	found := loadEnvFile()
+	found, envErr := loadEnvFile()
 	return Config{
 		ZepAPIKey:          os.Getenv("ZEP_API_KEY"),
 		UserID:             os.Getenv("ZEP_USER_ID"),
@@ -55,6 +61,7 @@ func Load() Config {
 		CaptureTools:       boolEnv("SENTGRAPH_CAPTURE_TOOLS", false),
 		ContextTokenBudget: intEnv("SENTGRAPH_CONTEXT_TOKEN_BUDGET", 2000),
 		EnvFilePresent:     found,
+		envFileErr:         envErr,
 	}
 }
 
@@ -86,6 +93,9 @@ func (c Config) RequireEnvFile() error {
 	if !c.EnvFilePresent {
 		return errors.New(".env.local not found in project: sentgraph-mcp is project-scoped -- create .env.local in the project and install the plugin with --scope project")
 	}
+	if c.envFileErr != nil {
+		return fmt.Errorf(".env.local found but could not be loaded: %w", c.envFileErr)
+	}
 	return nil
 }
 
@@ -93,22 +103,26 @@ func (c Config) RequireEnvFile() error {
 // project can carry its own keys. It searches upward from CLAUDE_PROJECT_DIR
 // (set by Claude Code for project-scoped servers) or the working directory and
 // loads the file with godotenv (non-override): existing environment variables
-// win, the file only fills in the ones that are unset. Missing files are ignored.
-func loadEnvFile() bool {
+// win, the file only fills in the ones that are unset. It returns whether a
+// file was found and any load error (a found-but-unparsable file). Missing
+// files are not an error.
+func loadEnvFile() (bool, error) {
 	base := os.Getenv("CLAUDE_PROJECT_DIR")
 	if base == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			return false
+			return false, nil
 		}
 		base = wd
 	}
 	path, ok := findUp(base, envFileName)
 	if !ok {
-		return false
+		return false, nil
 	}
-	_ = godotenv.Load(path)
-	return true
+	if err := godotenv.Load(path); err != nil {
+		return true, fmt.Errorf("load %s: %w", path, err)
+	}
+	return true, nil
 }
 
 // findUp returns the path to name in the nearest ancestor directory of start.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,6 +178,25 @@ func TestRequireEnvFile(t *testing.T) {
 	}
 	if err := (Config{EnvFilePresent: false}).RequireEnvFile(); err == nil {
 		t.Fatal("absent .env.local should error")
+	}
+	// A found-but-unparsable .env.local must surface the load error, not pass.
+	err := (Config{EnvFilePresent: true, envFileErr: errors.New("boom")}).RequireEnvFile()
+	if err == nil || !strings.Contains(err.Error(), "could not be loaded") {
+		t.Fatalf("load error should be surfaced, got %v", err)
+	}
+}
+
+func TestLoadEnvFileSurfacesParseError(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".env.local"), "not a valid env line\n")
+	t.Setenv("CLAUDE_PROJECT_DIR", dir)
+
+	cfg := Load()
+	if !cfg.EnvFilePresent {
+		t.Fatal("file should be reported present")
+	}
+	if err := cfg.RequireEnvFile(); err == nil {
+		t.Fatal("malformed .env.local must make RequireEnvFile error")
 	}
 }
 
