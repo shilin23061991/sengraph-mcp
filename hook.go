@@ -19,6 +19,11 @@ func runHook(ctx context.Context, args []string) error {
 	}
 	event := args[0]
 	cfg := config.Load()
+	if !cfg.EnvFilePresent {
+		// No project .env.local: stay silent so a global (user-scope) install
+		// does not spam hook errors in unrelated projects.
+		return nil
+	}
 	if err := cfg.Validate(); err != nil {
 		return err
 	}

@@ -1,6 +1,6 @@
 // Package config resolves runtime configuration from required environment
-// variables. The three identity values (API key, user, project) must be set
-// explicitly; there are no silent fallbacks.
+// variables, optionally seeded from a per-project .env.local file so each
+// project can carry its own keys without a shared global environment.
 //
 // Memory scoping: a single Zep user (the developer) holds personal,
 // cross-project context; each project gets its own standalone graph. A
@@ -10,15 +10,31 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
+
+const envFileName = ".env.local"
 
 // Config holds resolved settings. Build it with Load.
 type Config struct {
 	ZepAPIKey string
 	UserID    string
 	ProjectID string
+
+	// EnvFilePresent reports whether a .env.local was found for this project.
+	// serve and doctor require it (RequireEnvFile) so a global (user-scope)
+	// install does not silently run in projects that are not set up.
+	EnvFilePresent bool
+
+	// envFileErr is non-nil when a .env.local was found but could not be loaded
+	// (syntax/permission error). RequireEnvFile surfaces it so the user sees the
+	// real cause instead of a misleading "key is required".
+	envFileErr error
 
 	// Hook frequency / behavior toggles ("read more, write more").
 	// TODO: Wire these into hooks and context assembly once runtime tuning is
@@ -29,9 +45,13 @@ type Config struct {
 	ContextTokenBudget int
 }
 
-// Load resolves configuration strictly from environment variables. The three
-// identity values have no fallbacks; Validate rejects any that are empty.
+// Load resolves configuration from the environment. A per-project .env.local
+// (searched upward from CLAUDE_PROJECT_DIR or the working directory) is loaded
+// first and takes precedence, so each project supplies its own keys without a
+// shared global environment. The three identity values are still required;
+// Validate rejects any that are empty.
 func Load() Config {
+	found, envErr := loadEnvFile()
 	return Config{
 		ZepAPIKey:          os.Getenv("ZEP_API_KEY"),
 		UserID:             os.Getenv("ZEP_USER_ID"),
@@ -40,6 +60,8 @@ func Load() Config {
 		ProjectAutocapture: boolEnv("SENTGRAPH_PROJECT_AUTOCAPTURE", true),
 		CaptureTools:       boolEnv("SENTGRAPH_CAPTURE_TOOLS", false),
 		ContextTokenBudget: intEnv("SENTGRAPH_CONTEXT_TOKEN_BUDGET", 2000),
+		EnvFilePresent:     found,
+		envFileErr:         envErr,
 	}
 }
 
@@ -63,6 +85,64 @@ func (c Config) Validate() error {
 	default:
 		return nil
 	}
+}
+
+// RequireEnvFile guards against global (user-scope) or accidental installs:
+// without a .env.local in the project, serve and doctor refuse to run.
+func (c Config) RequireEnvFile() error {
+	if !c.EnvFilePresent {
+		return errors.New(".env.local not found in project: sentgraph-mcp is project-scoped -- create .env.local in the project and install the plugin with --scope project")
+	}
+	if c.envFileErr != nil {
+		return fmt.Errorf(".env.local found but could not be loaded: %w", c.envFileErr)
+	}
+	return nil
+}
+
+// loadEnvFile seeds the process environment from the nearest .env.local so each
+// project can carry its own keys. It searches upward from CLAUDE_PROJECT_DIR
+// (set by Claude Code for project-scoped servers) or the working directory and
+// loads the file with godotenv (non-override): existing environment variables
+// win, the file only fills in the ones that are unset. It returns whether a
+// file was found and any load error (a found-but-unparsable file). Missing
+// files are not an error.
+func loadEnvFile() (bool, error) {
+	base := os.Getenv("CLAUDE_PROJECT_DIR")
+	if base == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return false, nil
+		}
+		base = wd
+	}
+	path, ok := findUp(base, envFileName)
+	if !ok {
+		return false, nil
+	}
+	if err := godotenv.Load(path); err != nil {
+		return true, fmt.Errorf("load %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// findUp returns the path to name in the nearest ancestor directory of start.
+func findUp(start, name string) (string, bool) {
+	dir := filepath.Clean(start)
+	for {
+		if p := filepath.Join(dir, name); fileExists(p) {
+			return p, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func boolEnv(key string, def bool) bool {
