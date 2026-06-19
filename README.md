@@ -11,48 +11,43 @@ Sentgraph держит локальный слой тонким:
 
 ## Установка
 
-Без клонирования репозитория (Go скачает модуль сам):
-
 ```bash
 go install github.com/shilin23061991/sentgraph-mcp@latest
 ```
 
-Из клонированного репозитория:
-
-```bash
-go install .
-```
-
-Бинарь `sentgraph-mcp` попадёт в `$(go env GOBIN)` (или `$(go env GOPATH)/bin`) -- убедитесь, что этот каталог в `PATH`.
-
 ## Установка в Claude Code
 
-Шаги ниже подключают MCP-сервер, ставят скилы и хуки и дописывают промт. Все команды выполняйте из корня репозитория.
+Шаги ниже подключают MCP-сервер, ставят скилы и хуки и дописывают промт.
+ 
+Все команды выполняйте из корня репозитория.
 
-### 1. Подключить MCP-сервер
+### 1. Ключи окружения
 
-stdio (по умолчанию для Claude Code). Скоуп проекта: конфиг пишется в `.mcp.json` в корне репозитория (коммитится, шарится с командой):
+`sentgraph-mcp` сам читает `.env.local` из корня проекта при старте (ищет вверх по дереву от `CLAUDE_PROJECT_DIR`/рабочего каталога), поэтому у каждого проекта свои ключи и общий глобальный env не нужен.
+
+Создайте `.env.local` одной командой (он в `.gitignore`, в коммит не попадёт; значения замените на свои):
 
 ```bash
-claude mcp add --transport stdio \
-  --env ZEP_API_KEY='${ZEP_API_KEY}' \
-  --env ZEP_USER_ID='${ZEP_USER_ID}' \
-  --env SENTGRAPH_PROJECT_ID="sentoke" \
-  --scope project sentgraph -- sentgraph-mcp serve
+cat > .env.local <<'EOF'
+ZEP_API_KEY=вашключ
+ZEP_USER_ID=вашид
+SENTGRAPH_PROJECT_ID=имя-проекта
+EOF
 ```
 
-> Скоуп `project` пишет конфиг в `.mcp.json` (его коммитят). Секреты туда не попадают: `ZEP_API_KEY` и `ZEP_USER_ID` записываются литералами `${...}` (одинарные кавычки -- shell их не раскрывает) и подставляются из окружения каждого разработчика при старте сессии; коммитится только `SENTGRAPH_PROJECT_ID` (замените `sentoke` на свой id). Если `${ZEP_API_KEY}`/`${ZEP_USER_ID}` не заданы в окружении -- Claude Code не запустит сервер.
+Вручную экспортировать ничего не нужно. Приоритет стандартный (non-override): если переменная уже задана в окружении, она побеждает, а `.env.local` лишь заполняет недостающие.
+
+### 2. Подключить MCP-сервер
+
+stdio (по умолчанию для Claude Code). Скоуп проекта: конфиг пишется в `.mcp.json` в корне репозитория (коммитится, шарится с командой). Ключи передавать не нужно -- бинарь берёт их из `.env.local`:
+
+```bash
+claude mcp add --scope project --transport stdio sentgraph -- sentgraph-mcp serve
+```
+
+> В `.mcp.json` секретов нет -- все ключи бинарь читает из `.env.local` (шаг 1), поэтому файл безопасно коммитить. `--` отделяет имя сервера `sentgraph` от команды запуска `sentgraph-mcp serve`.
 >
-> Перед первым использованием project-сервер требует подтверждения (`claude mcp list` покажет `Pending approval`). `--scope` стоит между последним `--env` и именем `sentgraph` намеренно -- иначе CLI читает имя как пару `KEY=value`; `--` отделяет команду запуска.
-
-Вариант с HTTP (сервер в отдельном процессе):
-
-```bash
-sentgraph-mcp serve --http :8080                               # терминал 1
-claude mcp add --transport http --scope project sentgraph http://localhost:8080   # терминал 2
-```
-
-Проверка:
+> Перед первым использованием project-сервер требует подтверждения (`claude mcp list` покажет `Pending approval`).
 
 ```bash
 claude mcp list

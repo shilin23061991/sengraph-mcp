@@ -20,7 +20,7 @@ The only local processing before cloud writes is secret redaction and Zep limit 
 
 ## Configuration
 
-Resolved strictly from environment variables; all three identity values are required (no fallbacks). See `.env.example`.
+Resolved from environment variables; all three identity values are required. sentgraph-mcp also loads a per-project `.env.local` at startup via godotenv (non-override: existing env wins, the file fills gaps). See `.env.example`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 // Package config resolves runtime configuration from required environment
-// variables. The three identity values (API key, user, project) must be set
-// explicitly; there are no silent fallbacks.
+// variables, optionally seeded from a per-project .env.local file so each
+// project can carry its own keys without a shared global environment.
 //
 // Memory scoping: a single Zep user (the developer) holds personal,
 // cross-project context; each project gets its own standalone graph. A
@@ -11,8 +11,13 @@ package config
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
+
+const envFileName = ".env.local"
 
 // Config holds resolved settings. Build it with Load.
 type Config struct {
@@ -29,9 +34,13 @@ type Config struct {
 	ContextTokenBudget int
 }
 
-// Load resolves configuration strictly from environment variables. The three
-// identity values have no fallbacks; Validate rejects any that are empty.
+// Load resolves configuration from the environment. A per-project .env.local
+// (searched upward from CLAUDE_PROJECT_DIR or the working directory) is loaded
+// first and takes precedence, so each project supplies its own keys without a
+// shared global environment. The three identity values are still required;
+// Validate rejects any that are empty.
 func Load() Config {
+	loadEnvFile()
 	return Config{
 		ZepAPIKey:          os.Getenv("ZEP_API_KEY"),
 		UserID:             os.Getenv("ZEP_USER_ID"),
@@ -63,6 +72,45 @@ func (c Config) Validate() error {
 	default:
 		return nil
 	}
+}
+
+// loadEnvFile seeds the process environment from the nearest .env.local so each
+// project can carry its own keys. It searches upward from CLAUDE_PROJECT_DIR
+// (set by Claude Code for project-scoped servers) or the working directory and
+// loads the file with godotenv (non-override): existing environment variables
+// win, the file only fills in the ones that are unset. Missing files are ignored.
+func loadEnvFile() {
+	base := os.Getenv("CLAUDE_PROJECT_DIR")
+	if base == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return
+		}
+		base = wd
+	}
+	if path, ok := findUp(base, envFileName); ok {
+		_ = godotenv.Load(path)
+	}
+}
+
+// findUp returns the path to name in the nearest ancestor directory of start.
+func findUp(start, name string) (string, bool) {
+	dir := filepath.Clean(start)
+	for {
+		if p := filepath.Join(dir, name); fileExists(p) {
+			return p, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func boolEnv(key string, def bool) bool {

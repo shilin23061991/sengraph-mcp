@@ -54,7 +54,7 @@ flowchart TD
 
 - `user` = разработчик: env `ZEP_USER_ID`. Личный граф (предпочтения, стиль, кросс-проектное).
 - `graph` (standalone) = проект: `graph_id = "proj:<project_id>"`, создаётся идемпотентно. Один на проект, общий для всех его репозиториев.
-- `project_id` задаётся обязательной env `SENTGRAPH_PROJECT_ID` (без фолбэков). Несколько репо с одним `project_id` => общий граф проекта.
+- `project_id` задаётся обязательной env `SENTGRAPH_PROJECT_ID` (из окружения или `.env.local`). Несколько репо с одним `project_id` => общий граф проекта.
 - `thread_id` = Claude `session_id` (из stdin хука). Threads принадлежат `user` и вливаются в его граф.
 - Запись: диалоговые реплики -> `Thread.AddMessages` (личный граф); проектные факты -> `Graph.Add(graph_id=proj:...)`.
 - Чтение: `Thread.GetUserContext` (личный контекст) + `Graph.Search(graph_id=proj:...)` (проектные факты) -> склейка с токен-бюджетом.
@@ -164,7 +164,7 @@ sentgraph-mcp/
   go.mod                 # module github.com/shilin23061991/sentgraph-mcp, go 1.25
   main.go                # CLI (binary sentgraph-mcp): serve | hook <event> | doctor
   internal/
-    config/config.go     # ZEP_API_KEY, ZEP_USER_ID, SENTGRAPH_PROJECT_ID (обязательные env), тумблеры
+    config/config.go     # ZEP_API_KEY, ZEP_USER_ID, SENTGRAPH_PROJECT_ID (env + .env.local), тумблеры
     zepstore/store.go    # адаптер zep-go/v3 (memory.Gateway)
     memory/service.go    # толстое ядро (раздел 5)
     redact/redact.go     # вырезание секретов до отправки
@@ -192,7 +192,7 @@ sentgraph-mcp/
 ## 11. Статус реализации
 
 - [x] Скелет: `go.mod` (go 1.25) + зависимости; main-пакет в корне (бинарь `sentgraph-mcp`) с режимами `serve`/`hook`/`doctor`.
-- [x] `internal/config`: обязательные env ZEP_API_KEY, ZEP_USER_ID, SENTGRAPH_PROJECT_ID (без фолбэков), тумблеры.
+- [x] `internal/config`: обязательные ключи ZEP_API_KEY, ZEP_USER_ID, SENTGRAPH_PROJECT_ID из env, с автозагрузкой `.env.local` (godotenv, non-override), тумблеры.
 - [x] `internal/redact`: вырезание секретов (API key, JWT, AWS/GCP, bearer).
 - [x] `internal/zepstore` + `internal/memory`: `EnsureIdentity`, `GetContext`, `AddTurn` (return_context), `Search`, `AddData` (чанк >10k), `History`, `Forget`.
 - [x] `internal/mcpserver`: регистрация 6 инструментов с аннотациями; запуск stdio и Streamable HTTP.

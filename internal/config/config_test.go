@@ -1,11 +1,22 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// isolate points config resolution at an empty directory so a stray .env.local
+// (in the repo or a developer's home tree) cannot leak into env-based tests.
+func isolate(t *testing.T) {
+	t.Helper()
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	t.Chdir(t.TempDir())
+}
+
 func TestLoadReadsRequiredEnv(t *testing.T) {
+	isolate(t)
 	t.Setenv("ZEP_API_KEY", "key-123")
 	t.Setenv("ZEP_USER_ID", "dev-7")
 	t.Setenv("SENTGRAPH_PROJECT_ID", "sentoke")
@@ -20,6 +31,7 @@ func TestLoadReadsRequiredEnv(t *testing.T) {
 }
 
 func TestLoadMissingRequiredFailsValidate(t *testing.T) {
+	isolate(t)
 	for _, k := range []string{"ZEP_API_KEY", "ZEP_USER_ID", "SENTGRAPH_PROJECT_ID"} {
 		t.Setenv(k, "")
 	}
@@ -28,7 +40,49 @@ func TestLoadMissingRequiredFailsValidate(t *testing.T) {
 	}
 }
 
+func TestLoadEnvFileFillsUnsetAndKeepsExisting(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".env.local"),
+		"# project keys\nZEP_API_KEY=\"local-key\"\nexport ZEP_USER_ID=local-user\nSENTGRAPH_PROJECT_ID=local-proj\n")
+	t.Setenv("CLAUDE_PROJECT_DIR", dir)
+	// An existing env var must win (non-override, standard godotenv behavior).
+	t.Setenv("ZEP_API_KEY", "env-key")
+	// Unset vars get filled from .env.local.
+	unset(t, "ZEP_USER_ID")
+	unset(t, "SENTGRAPH_PROJECT_ID")
+
+	c := Load()
+	if c.ZepAPIKey != "env-key" {
+		t.Fatalf("ZEP_API_KEY = %q, want env-key (existing env must win)", c.ZepAPIKey)
+	}
+	if c.UserID != "local-user" {
+		t.Fatalf("ZEP_USER_ID = %q, want local-user (filled from .env.local)", c.UserID)
+	}
+	if c.ProjectID != "local-proj" {
+		t.Fatalf("SENTGRAPH_PROJECT_ID = %q, want local-proj (filled from .env.local)", c.ProjectID)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("should validate: %v", err)
+	}
+}
+
+func TestLoadEnvFileFoundUpward(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".env.local"), "SENTGRAPH_PROJECT_ID=mono\n")
+	child := filepath.Join(root, "services", "api")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_PROJECT_DIR", child)
+	unset(t, "SENTGRAPH_PROJECT_ID")
+
+	if got := Load().ProjectID; got != "mono" {
+		t.Fatalf("ProjectID = %q, want mono from ancestor .env.local", got)
+	}
+}
+
 func TestToggleDefaults(t *testing.T) {
+	isolate(t)
 	for _, k := range []string{"SENTGRAPH_INJECT_EVERY_PROMPT", "SENTGRAPH_PROJECT_AUTOCAPTURE", "SENTGRAPH_CAPTURE_TOOLS", "SENTGRAPH_CONTEXT_TOKEN_BUDGET", "SENTGRAPH_PROJECT_ID"} {
 		t.Setenv(k, "")
 	}
@@ -45,6 +99,7 @@ func TestToggleDefaults(t *testing.T) {
 }
 
 func TestInvalidEnvFallsBackToDefaults(t *testing.T) {
+	isolate(t)
 	t.Setenv("SENTGRAPH_PROJECT_ID", "")
 	t.Setenv("SENTGRAPH_CONTEXT_TOKEN_BUDGET", "not-a-number")
 	t.Setenv("SENTGRAPH_INJECT_EVERY_PROMPT", "maybe")
@@ -96,4 +151,29 @@ func TestValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// unset removes an env var for the duration of the test (restoring it after) so
+// non-override loading can fill it from .env.local. t.Setenv cannot express an
+// unset variable; it only sets values.
+func unset(t *testing.T, key string) {
+	t.Helper()
+	orig, had := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv(key, orig)
+		} else {
+			_ = os.Unsetenv(key)
+		}
+	})
 }
