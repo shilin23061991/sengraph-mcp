@@ -54,7 +54,7 @@ flowchart TD
 
 - `user` = разработчик: env `ZEP_USER_ID`. Личный граф (предпочтения, стиль, кросс-проектное).
 - `graph` (standalone) = проект: `graph_id = "proj:<project_id>"`, создаётся идемпотентно. Один на проект, общий для всех его репозиториев.
-- `project_id` резолвится (`internal/config`): env `SENTGRAPH_PROJECT_ID` -> `project_id` в `.sentgraph.toml` (поиск вверх по дереву) -> fallback: имя каталога (где найден toml или `startDir`). Несколько репо с одним `project_id` => общий граф проекта.
+- `project_id` задаётся обязательной env `SENTGRAPH_PROJECT_ID` (без фолбэков). Несколько репо с одним `project_id` => общий граф проекта.
 - `thread_id` = Claude `session_id` (из stdin хука). Threads принадлежат `user` и вливаются в его граф.
 - Запись: диалоговые реплики -> `Thread.AddMessages` (личный граф); проектные факты -> `Graph.Add(graph_id=proj:...)`.
 - Чтение: `Thread.GetUserContext` (личный контекст) + `Graph.Search(graph_id=proj:...)` (проектные факты) -> склейка с токен-бюджетом.
@@ -164,7 +164,7 @@ sentgraph-mcp/
   go.mod                 # module github.com/shilin23061991/sengraph-mcp, go 1.25
   cmd/sentgraph/main.go  # CLI: serve | hook <event> | doctor
   internal/
-    config/config.go     # ZEP_API_KEY, ZEP_USER_ID, project_id (.sentgraph.toml + env), тумблеры
+    config/config.go     # ZEP_API_KEY, ZEP_USER_ID, SENTGRAPH_PROJECT_ID (обязательные env), тумблеры
     zepstore/store.go    # адаптер zep-go/v3 (memory.Gateway)
     memory/service.go    # толстое ядро (раздел 5)
     redact/redact.go     # вырезание секретов до отправки
@@ -184,15 +184,15 @@ sentgraph-mcp/
 
 ## 10. Зависимости / конфиг / безопасность
 
-- `go get github.com/getzep/zep-go/v3` + `go get github.com/modelcontextprotocol/go-sdk` + TOML-парсер.
-- Безопасность: редакция секретов до отправки в облако (API keys, JWT, AWS/GCP, bearer); никаких ключей в коде (только env); валидация входов инструментов; путь `.sentgraph.toml` без traversal.
+- `go get github.com/getzep/zep-go/v3` + `go get github.com/modelcontextprotocol/go-sdk`.
+- Безопасность: редакция секретов до отправки в облако (API keys, JWT, AWS/GCP, bearer); никаких ключей в коде (только env); валидация входов инструментов.
 
 ---
 
 ## 11. Статус реализации
 
 - [x] Скелет: `go.mod` (go 1.25) + зависимости; `cmd/sentgraph` с режимами `serve`/`hook`/`doctor`.
-- [x] `internal/config`: резолв ключа, user_id, project_id (env -> `.sentgraph.toml` -> имя каталога), тумблеры.
+- [x] `internal/config`: обязательные env ZEP_API_KEY, ZEP_USER_ID, SENTGRAPH_PROJECT_ID (без фолбэков), тумблеры.
 - [x] `internal/redact`: вырезание секретов (API key, JWT, AWS/GCP, bearer).
 - [x] `internal/zepstore` + `internal/memory`: `EnsureIdentity`, `GetContext`, `AddTurn` (return_context), `Search`, `AddData` (чанк >10k), `History`, `Forget`.
 - [x] `internal/mcpserver`: регистрация 6 инструментов с аннотациями; запуск stdio и Streamable HTTP.

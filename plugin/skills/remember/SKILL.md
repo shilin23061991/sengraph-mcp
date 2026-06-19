@@ -1,14 +1,19 @@
-# Remember
+---
+name: remember
+description: Сохраняет в долговременную память устойчивые факты, решения, предпочтения и инварианты проекта. Используй, когда пользователь явно просит что-то запомнить, или когда выявлен факт либо решение, которое должно пережить будущие сессии.
+---
 
-Use when the user explicitly asks you to remember something, or when you learn a durable preference, project decision, invariant, or implementation fact that should survive future sessions.
+# Запомнить
 
-## Workflow
+Используй, когда пользователь явно просит что-то запомнить, или когда ты узнаёшь устойчивое предпочтение, проектное решение, инвариант либо важный факт реализации, который должен пережить будущие сессии.
 
-1. Decide whether the memory is personal/user-level or project-level.
-2. For durable facts, decisions, preferences, or invariants, call `memory_add` with:
-   - `target: "user"` for personal preferences and cross-project rules.
-   - `target: "project"` for architecture, repo conventions, decisions, and implementation facts.
-3. To persist conversation turns the user asked to keep, call `memory_add_messages` with `thread_id` and the messages. Hooks already capture routine transcript; use this only for explicit remember requests.
-4. Keep the saved text concise and factual.
+## Алгоритм
 
-Never save secrets, tokens, credentials, private keys, or raw sensitive logs.
+1. Определи уровень памяти: личный (пользователь) или проектный.
+2. Для устойчивых фактов, решений, предпочтений или инвариантов вызови `memory_add`:
+   - `target: "user"` -- личные предпочтения и правила, общие для всех проектов.
+   - `target: "project"` -- архитектура, договорённости репозитория, решения и факты реализации.
+3. Чтобы сохранить ходы беседы, которые пользователь попросил оставить, вызови `memory_add_messages` с `thread_id` и сообщениями. Рутинный транскрипт уже пишут хуки; используй это только для явных просьб запомнить.
+4. Держи сохраняемый текст кратким и фактологичным.
+
+Никогда не сохраняй секреты, токены, учётные данные, приватные ключи или сырые чувствительные логи.

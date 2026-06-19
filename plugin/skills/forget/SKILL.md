@@ -1,12 +1,17 @@
-# Forget
+---
+name: forget
+description: Удаляет сохранённый элемент памяти (edge, node или episode) по UUID. Используй только когда пользователь явно просит удалить или забыть что-то из памяти.
+---
 
-Use when the user asks to delete, remove, or forget a stored memory.
+# Забыть
 
-## Workflow
+Используй, когда пользователь просит удалить, стереть или забыть что-то из сохранённой памяти.
 
-1. Find the memory item with `memory_search`.
-2. Confirm the exact item to delete if there is any ambiguity.
-3. Call `memory_forget` with the returned `kind` (`edge`, `node`, or `episode`) and `uuid`.
-4. Report only what was deleted.
+## Алгоритм
 
-Deletion is destructive. Do not delete broad memory areas without explicit user confirmation.
+1. Найди элемент памяти через `memory_search`.
+2. Если есть неоднозначность, уточни точный элемент для удаления.
+3. Вызови `memory_forget` с полученными `kind` (`edge`, `node` или `episode`) и `uuid`.
+4. Сообщи только о том, что было удалено.
+
+Удаление необратимо. Не удаляй большие области памяти без явного подтверждения пользователя.

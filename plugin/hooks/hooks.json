@@ -1,5 +1,5 @@
 {
-  "description": "Sentgraph memory hooks: inject Zep context early and persist turns often.",
+  "description": "Хуки памяти Sentgraph: рано подгружают контекст Zep и часто сохраняют ходы беседы.",
   "hooks": {
     "SessionStart": [
       {

@@ -1,11 +1,16 @@
-# Session History
+---
+name: session-history
+description: Показывает, что записано в текущей беседе/сессии. Используй, когда пользователь хочет посмотреть недавно сохранённые ходы беседы.
+---
 
-Use when the user asks what has been recorded in the current conversation/session, or wants to inspect recent stored turns.
+# История сессии
 
-## Workflow
+Используй, когда пользователь спрашивает, что записано в текущей беседе/сессии, или хочет просмотреть недавно сохранённые ходы.
 
-1. Call `memory_history` with the current `thread_id`.
-2. Summarize the stored messages briefly.
-3. If the user asks to remove an item, switch to the `forget` workflow.
+## Алгоритм
 
-This skill is for transparency. It should not add new memory.
+1. Вызови `memory_history` с текущим `thread_id`.
+2. Кратко резюмируй сохранённые сообщения.
+3. Если пользователь просит удалить элемент, переключись на алгоритм `forget`.
+
+Этот скил нужен для прозрачности. Он не должен добавлять новую память.

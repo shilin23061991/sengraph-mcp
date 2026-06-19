@@ -1,10 +1,10 @@
-# Memory (sentgraph MCP)
+# Память (sentgraph MCP)
 
-You have long-term memory through the `sentgraph` MCP server, backed by Zep Cloud.
+У тебя есть долговременная память через MCP-сервер `sentgraph` на базе Zep Cloud.
 
-- At the start of work and when the topic changes, call `memory_context` and use the returned context.
-- If you need a specific past fact, call `memory_search` with a short focused query.
-- When you learn a durable preference, decision, project fact, or important lesson, save it with `memory_add` (or the `remember` skill). Do not wait until the end of the session.
-- The user controls history: use `session-history` to inspect stored turns and `forget` to delete memory items.
-- Routine conversation capture is handled automatically by hooks. Do not duplicate routine turns; save only facts that should last.
-- Never store secrets, tokens, API keys, credentials, or private keys in memory.
+- В начале работы и при смене темы вызывай `memory_context` и используй полученный контекст.
+- Если нужен конкретный факт из прошлого, вызови `memory_search` с коротким точным запросом.
+- Когда узнаёшь устойчивое предпочтение, решение, факт проекта или важный урок, сохрани его через `memory_add` (или скил `remember`). Не жди конца сессии.
+- Историей управляет пользователь: используй `session-history`, чтобы посмотреть сохранённые ходы, и `forget`, чтобы удалить элементы памяти.
+- Рутинный захват беседы выполняется автоматически хуками. Не дублируй рутинные ходы; сохраняй только факты, которые должны жить долго.
+- Никогда не храни в памяти секреты, токены, API-ключи, учётные данные или приватные ключи.

@@ -15,30 +15,24 @@ The only local processing before cloud writes is secret redaction and Zep limit 
 ## Scope model
 
 - `ZEP_USER_ID` maps to the developer. This user graph stores personal preferences and cross-project facts.
-- `project_id` maps to one standalone project graph. A project can span many repositories.
-- `.sentgraph.toml` can pin multiple repos to the same project:
-
-```toml
-project_id = "sentoke"
-```
-
+- `SENTGRAPH_PROJECT_ID` maps to one standalone project graph. A project can span many repositories by sharing the same id.
 - `thread_id` maps to the agent session id.
 
 ## Configuration
 
-Resolved from environment and an optional `.sentgraph.toml` (searched upward from the working directory). See `.env.example`.
+Resolved strictly from environment variables; all three identity values are required (no fallbacks). See `.env.example`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ZEP_API_KEY` | -- | Required. Zep Cloud API key. |
-| `ZEP_USER_ID` | `$USER` | Required. Developer identity for the user graph. |
-| `SENTGRAPH_PROJECT_ID` | -- | Override project id (beats `.sentgraph.toml` and directory name). |
+| `ZEP_USER_ID` | -- | Required. Developer identity for the user graph. |
+| `SENTGRAPH_PROJECT_ID` | -- | Required. Project identity for the project graph. |
 | `SENTGRAPH_INJECT_EVERY_PROMPT` | `true` | Inject context on every user prompt. |
 | `SENTGRAPH_PROJECT_AUTOCAPTURE` | `true` | Auto-capture project facts from hooks. |
 | `SENTGRAPH_CAPTURE_TOOLS` | `false` | Persist selected tool outputs on `PostToolUse`. |
 | `SENTGRAPH_CONTEXT_TOKEN_BUDGET` | `2000` | Max tokens for assembled context blocks. |
 
-Project id resolution: `SENTGRAPH_PROJECT_ID` -> `.sentgraph.toml` `project_id` -> repo directory basename. The Zep project graph id is `proj:{project_id}`.
+The Zep project graph id is `proj:{project_id}`. Share one project across repositories by setting the same `SENTGRAPH_PROJECT_ID`.
 
 ## Core Zep operations
 

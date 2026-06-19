@@ -1,51 +1,56 @@
-# Sentgraph MCP Tools
+---
+name: sentgraph-tools
+description: Справочник по шести базовым инструментам Sentgraph (memory_context, memory_search, memory_history, memory_add_messages, memory_add, memory_forget). Используй, чтобы выбрать подходящий инструмент памяти.
+---
 
-Reference for the six core Sentgraph tools. Use this when deciding which memory tool to call.
+# Инструменты Sentgraph MCP
+
+Справочник по шести базовым инструментам Sentgraph. Используй его, когда решаешь, какой инструмент памяти вызвать.
 
 ## memory_context
 
-Read-only. Returns assembled user memory plus optional project memory.
+Только чтение. Возвращает собранную память пользователя плюс опционально память проекта.
 
-Input:
+Вход:
 
 ```json
 {"thread_id":"<session id>","query":"optional focused query","limit":5}
 ```
 
-Use at the start of work, after topic changes, and before answering memory-dependent questions.
+Используй в начале работы, после смены темы и перед ответом на вопросы, зависящие от памяти.
 
 ## memory_search
 
-Read-only. Searches Zep graph memory.
+Только чтение. Ищет по графовой памяти Zep.
 
-Input:
+Вход:
 
 ```json
 {"query":"short focused query","target":"project","scope":"edges","limit":10}
 ```
 
-Targets: `project` (default) or `user`.
-Scopes: `edges`, `nodes`, `episodes`, `auto`.
+`target`: `project` (по умолчанию) или `user`.
+`scope`: `edges`, `nodes`, `episodes`, `auto`.
 
-Use for exact recall and before deletion.
+Используй для точного извлечения фактов и перед удалением.
 
 ## memory_history
 
-Read-only. Returns recent stored messages for a thread.
+Только чтение. Возвращает недавние сохранённые сообщения треда.
 
-Input:
+Вход:
 
 ```json
 {"thread_id":"<session id>","limit":20}
 ```
 
-Use for transparency and user inspection of current-session history.
+Используй для прозрачности и просмотра пользователем истории текущей сессии.
 
 ## memory_add_messages
 
-Write, non-destructive. Persists conversation messages to a Zep thread.
+Запись, неразрушающая. Сохраняет сообщения беседы в тред Zep.
 
-Input:
+Вход:
 
 ```json
 {
@@ -55,34 +60,34 @@ Input:
 }
 ```
 
-Limits enforced locally: max 30 messages per call, max 4096 characters per message.
-Routine turn capture is normally handled by hooks.
+Локальные лимиты: максимум 30 сообщений за вызов, максимум 4096 символов на сообщение.
+Рутинный захват ходов обычно выполняют хуки.
 
 ## memory_add
 
-Write, non-destructive. Persists facts, decisions, or project/user data to Zep graph memory.
+Запись, неразрушающая. Сохраняет факты, решения или данные проекта/пользователя в графовую память Zep.
 
-Input:
+Вход:
 
 ```json
 {"target":"project","type":"text","data":"Decision: ...","description":"optional"}
 ```
 
-Targets: `project` (default) or `user`.
-Types: `text` or `json`.
-Payloads over 10000 characters are chunked locally.
+`target`: `project` (по умолчанию) или `user`.
+`type`: `text` или `json`.
+Полезные нагрузки свыше 10000 символов локально разбиваются на части.
 
-Use for durable facts, not routine transcript duplication.
+Используй для устойчивых фактов, а не для дублирования рутинного транскрипта.
 
 ## memory_forget
 
-Write, destructive. Deletes a Zep memory item by UUID.
+Запись, разрушающая. Удаляет элемент памяти Zep по UUID.
 
-Input:
+Вход:
 
 ```json
 {"kind":"edge","uuid":"..."}
 ```
 
-Kinds: `edge`, `node`, `episode`.
-Use only after the user asks to delete/forget and the exact item is known.
+`kind`: `edge`, `node`, `episode`.
+Используй только после того, как пользователь попросил удалить/забыть и точный элемент известен.

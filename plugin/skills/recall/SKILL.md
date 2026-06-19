@@ -1,11 +1,16 @@
-# Recall
+---
+name: recall
+description: Достаёт из памяти прошлый контекст, ранее принятые решения, факты и предпочтения проекта. Используй, когда пользователь просит вспомнить контекст или спрашивает "что мы решали".
+---
 
-Use when the user asks you to remember prior context, previous decisions, project facts, preferences, or "what did we decide".
+# Вспомнить
 
-## Workflow
+Используй, когда пользователь просит вспомнить прошлый контекст, ранее принятые решения, факты проекта, предпочтения или спрашивает "что мы решали".
 
-1. Call `memory_context` with the current `thread_id` and a concise `query` when available.
-2. If the answer needs a specific fact, call `memory_search` with `target: "project"` first, then `target: "user"` if needed.
-3. Answer from the returned context. If memory is empty or uncertain, say so clearly.
+## Алгоритм
 
-Do not invent missing memories.
+1. Вызови `memory_context` с текущим `thread_id` и кратким `query`, если он есть.
+2. Если для ответа нужен конкретный факт, вызови `memory_search` сначала с `target: "project"`, затем при необходимости с `target: "user"`.
+3. Отвечай на основе полученного контекста. Если память пуста или есть сомнения, прямо скажи об этом.
+
+Не выдумывай отсутствующие воспоминания.

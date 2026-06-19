@@ -1,96 +1,139 @@
 # sentgraph-mcp
 
-Go MCP server for long-term coding-agent memory backed by Zep Cloud.
+Go MCP-сервер долговременной памяти для кодинг-агентов на базе Zep Cloud.
 
-Sentgraph keeps the local layer thin:
+Sentgraph держит локальный слой тонким:
 
-- Zep Cloud owns graph construction, deduplication, embeddings, and retrieval.
-- Sentgraph exposes six core MCP tools for agents.
-- Native Go hooks read/write memory frequently without a local daemon.
-- Project memory is scoped by `project_id`, so one project can span several repositories.
+- Zep Cloud отвечает за построение графа, дедупликацию, эмбеддинги и извлечение.
+- Sentgraph отдаёт агенту шесть базовых MCP-инструментов.
+- Нативные Go-хуки часто читают и пишут память без локального демона.
+- Память проекта разделена по `project_id`, поэтому один проект может охватывать несколько репозиториев.
 
-## Status
+## Установка
 
-Implemented:
-
-- Go CLI skeleton: `sentgraph serve`, `sentgraph hook <event>`, `sentgraph doctor`.
-- Config resolution from env and `.sentgraph.toml`.
-- Secret redaction before cloud writes.
-- Claude transcript parsing for Stop/SessionEnd hooks.
-- Core memory service with Zep limits: 30 messages/call, 4096 chars/message, 10000 chars/graph payload chunk.
-- Zep Cloud adapter using `github.com/getzep/zep-go/v3`.
-- MCP server using the official `github.com/modelcontextprotocol/go-sdk`.
-- Claude hook config and skill documentation.
-
-## Install
+Без клонирования репозитория (Go скачает модуль сам):
 
 ```bash
 go install github.com/shilin23061991/sengraph-mcp/cmd/sentgraph@latest
 ```
 
-For local development:
+Из клонированного репозитория:
 
 ```bash
-go build ./cmd/sentgraph
+go install ./cmd/sentgraph
 ```
 
-## Configuration
+Бинарь `sentgraph` попадёт в `$(go env GOBIN)` (или `$(go env GOPATH)/bin`) -- убедитесь, что этот каталог в `PATH`.
 
-Required:
+## Установка в Claude Code
+
+Шаги ниже подключают MCP-сервер, ставят скилы и хуки и дописывают промт. Все команды выполняйте из корня репозитория.
+
+### 1. Подключить MCP-сервер
+
+stdio (по умолчанию для Claude Code). Скоуп проекта: конфиг пишется в `.mcp.json` в корне репозитория (коммитится, шарится с командой):
 
 ```bash
-export ZEP_API_KEY="..."
+claude mcp add --transport stdio \
+  --env ZEP_API_KEY='${ZEP_API_KEY}' \
+  --env ZEP_USER_ID='${ZEP_USER_ID}' \
+  --env SENTGRAPH_PROJECT_ID="sentoke" \
+  --scope project sentgraph -- sentgraph serve
 ```
 
-`ZEP_USER_ID` identifies the developer in Zep. If unset, it falls back to `$USER`.
+> Скоуп `project` пишет конфиг в `.mcp.json` (его коммитят). Секреты туда не попадают: `ZEP_API_KEY` и `ZEP_USER_ID` записываются литералами `${...}` (одинарные кавычки -- shell их не раскрывает) и подставляются из окружения каждого разработчика при старте сессии; коммитится только `SENTGRAPH_PROJECT_ID` (замените `sentoke` на свой id). Если `${ZEP_API_KEY}`/`${ZEP_USER_ID}` не заданы в окружении -- Claude Code не запустит сервер.
+>
+> Перед первым использованием project-сервер требует подтверждения (`claude mcp list` покажет `Pending approval`). `--scope` стоит между последним `--env` и именем `sentgraph` намеренно -- иначе CLI читает имя как пару `KEY=value`; `--` отделяет команду запуска.
 
-Project scope can be shared across many repos by adding `.sentgraph.toml` anywhere above the working directory (searched upward, not only at the repo root):
-
-```toml
-project_id = "sentoke"
-```
-
-Optional:
+Вариант с HTTP (сервер в отдельном процессе):
 
 ```bash
-export SENTGRAPH_PROJECT_ID="sentoke"
-export SENTGRAPH_INJECT_EVERY_PROMPT=true
-export SENTGRAPH_PROJECT_AUTOCAPTURE=true
-export SENTGRAPH_CAPTURE_TOOLS=false
-export SENTGRAPH_CONTEXT_TOKEN_BUDGET=2000
+sentgraph serve --http :8080                                   # терминал 1
+claude mcp add --transport http --scope project sentgraph http://localhost:8080   # терминал 2
 ```
 
-## Commands
+Проверка:
 
 ```bash
-sentgraph doctor                 # validate config (API key, user, project id)
-sentgraph doctor --online        # also check Zep connectivity (ensure user/project graph/thread)
-sentgraph serve                  # MCP over stdio (default for Claude Code / Cursor)
-sentgraph serve --http :8080     # MCP over Streamable HTTP on ADDR
+claude mcp list
+claude mcp get sentgraph
+```
+
+### 3. Установить скилы
+
+Личные (для всех проектов):
+
+```bash
+mkdir -p ~/.claude/skills
+cp -R plugin/skills/* ~/.claude/skills/
+```
+
+Либо в рамках проекта (коммитятся в репозиторий):
+
+```bash
+mkdir -p .claude/skills
+cp -R plugin/skills/* .claude/skills/
+```
+
+Станут доступны команды `/remember`, `/recall`, `/forget`, `/session-history`, `/sentgraph-tools`.
+
+### 4. Установить хуки
+
+Хуки объявляются в `settings.json`. Команда ниже вмердживает блок `hooks` из `plugin/hooks/hooks.json` в пользовательские настройки (нужен `jq`):
+
+```bash
+mkdir -p ~/.claude
+[ -f ~/.claude/settings.json ] || echo '{}' > ~/.claude/settings.json
+tmp="$(mktemp)"
+jq --slurpfile h plugin/hooks/hooks.json '.hooks = ((.hooks // {}) * $h[0].hooks)' \
+  ~/.claude/settings.json > "$tmp" && mv "$tmp" ~/.claude/settings.json
+```
+
+> Команда идемпотентна, но заменяет массивы хуков для событий `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, `SessionEnd`. Если на этих событиях уже висят ваши хуки, объедините блоки вручную. Для настроек проекта используйте `.claude/settings.json`.
+
+### 5. Дописать промт
+
+Добавьте блок памяти в файл памяти Claude (один раз):
+
+```bash
+# либо для текущего проекта
+printf '\n' >> ./CLAUDE.md && cat CLAUDE.snippet.md >> ./CLAUDE.md
+```
+
+### Финальная проверка
+
+```bash
+sentgraph doctor --online   # проверка конфигурации + связи с Zep
+claude mcp list             # sentgraph должен быть в списке
+```
+
+## Команды
+
+```bash
+sentgraph doctor                 # проверка конфигурации (API-ключ, пользователь, project id)
+sentgraph doctor --online        # дополнительно проверить связь с Zep (user/project graph/thread)
+sentgraph serve                  # MCP по stdio (по умолчанию для Claude Code / Cursor)
+sentgraph serve --http :8080     # MCP по Streamable HTTP на ADDR
 sentgraph hook SessionStart
 ```
 
-## MCP tools
+## MCP-инструменты
 
-- `memory_context` -- assembled user + project context.
-- `memory_search` -- search user or project graph memory.
-- `memory_history` -- get recent thread messages.
-- `memory_add_messages` -- persist conversation turns.
-- `memory_add` -- persist project/user facts or data.
-- `memory_forget` -- delete an edge, node, or episode by UUID.
+- `memory_context` -- собранный контекст пользователя и проекта.
+- `memory_search` -- поиск по графовой памяти пользователя или проекта.
+- `memory_history` -- недавние сообщения треда.
+- `memory_add_messages` -- сохранить ходы беседы.
+- `memory_add` -- сохранить факты или данные проекта/пользователя.
+- `memory_forget` -- удалить edge, node или episode по UUID.
 
-## Hooks
+## Хуки
 
-The Claude plugin hook config is in `plugin/hooks/hooks.json`.
+Конфигурация хуков плагина Claude -- в `plugin/hooks/hooks.json`.
 
-Default events:
+События по умолчанию:
 
-- `SessionStart` -- read context and inject it.
-- `UserPromptSubmit` -- write the user prompt and inject fresh context.
-- `PreCompact` -- re-inject context before compaction.
-- `Stop` -- persist the latest assistant turn from the transcript.
-- `SessionEnd` -- final persist pass.
-
-## Design
-
-See `docs/implementation-plan.md` for the full plan and `zep-memory.md` for the architecture notes.
+- `SessionStart` -- прочитать контекст и подгрузить его.
+- `UserPromptSubmit` -- записать промт пользователя и подгрузить свежий контекст.
+- `PreCompact` -- повторно подгрузить контекст перед компакцией.
+- `Stop` -- сохранить последний ход ассистента из транскрипта.
+- `SessionEnd` -- финальный проход сохранения.
